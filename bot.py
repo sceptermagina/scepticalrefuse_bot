@@ -16,7 +16,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Envía un mensaje cuando el comando /start es emitido."""
     await update.message.reply_text(
-        "¡Hola! Soy @rubyjuma_bot. Usa /stars para probar un pago con Telegram Stars."
+        "¡Hola! Soy @scepticalrefuse_bot. Usa /stars para probar un pago con Telegram Stars."
     )
 
 async def send_stars_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,4 +65,5 @@ def main():
     application.run_polling()
 
 if __name__ == '__main__':
+
     main()
