@@ -1,77 +1,105 @@
 import logging
 import os
-from telegram import Update, LabeledPrice, Invoice
+from telegram import Update, LabeledPrice
 from telegram.ext import Application, CommandHandler, ContextTypes, PreCheckoutQueryHandler, MessageHandler, filters
 
-# Configuración de logs básica
+# Configuración de logs
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Tomar token de Railway
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Responde al comando /start"""
+    """Instrucciones de uso"""
     await update.message.reply_text(
-        "¡Hola! Soy @scepticalrefuse_bot. Estoy vivo en Railway.\nUsa /stars para probar el pago."
+        "¡Hola! Soy @scepticalrefuse_bot.\n\n"
+        "Para hacer una donación, usa el comando /stars seguido de la cantidad.\n"
+        "Ejemplo:\n"
+        "🔹 /stars 10 (Para donar 10 estrellas)\n"
+        "🔹 /stars 100 (Para donar 100 estrellas)\n\n"
+        "Si solo escribes /stars, se cobrará 1 estrella por defecto."
     )
 
 async def send_stars_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía la factura de Stars corregida"""
+    """Genera una factura con la cantidad elegida por el usuario"""
     chat_id = update.message.chat_id
     
-    # DATOS DE LA FACTURA
-    title = "Donación de Prueba"
-    description = "Prueba de 1 Star"
-    payload = "Custom-Payload"
-    currency = "XTR"  # Moneda de Stars
-    price = 1  # Cantidad
-    prices = [LabeledPrice("Donación", price)]
+    # 1. DEFINIR EL PRECIO
+    # Por defecto cobramos 1 si no escriben nada
+    amount = 1 
+    
+    # Verificamos si el usuario escribió un número (context.args)
+    if context.args:
+        try:
+            # Intentamos convertir lo que escribió a un número entero
+            input_amount = int(context.args[0])
+            
+            if input_amount < 1:
+                await update.message.reply_text("❌ El mínimo es 1 estrella.")
+                return
+            
+            amount = input_amount
+            
+        except ValueError:
+            await update.message.reply_text("❌ Por favor escribe un número válido. Ejemplo: /stars 10")
+            return
 
-    # ENVÍO DE FACTURA (Forma corregida para v21+)
-    # Usamos argumentos con nombre (chat_id=..., title=...) para evitar errores
+    # 2. CREAR LOS DATOS DE LA FACTURA
+    title = f"Donación de {amount} Stars"
+    description = f"Muchas gracias por apoyar con {amount} estrellas ⭐"
+    payload = f"donacion_{amount}_stars" # Referencia interna
+    currency = "XTR" 
+    prices = [LabeledPrice("Donación", amount)]
+
+    # 3. ENVIAR LA FACTURA
     try:
         await context.bot.send_invoice(
             chat_id=chat_id,
             title=title,
             description=description,
             payload=payload,
-            provider_token="", # DEBE estar vacío para Stars, pero debe enviarse
+            provider_token="", # Siempre vacío para Stars
             currency=currency,
             prices=prices
         )
     except Exception as e:
-        # Si falla, el bot te lo dirá en el chat
-        await update.message.reply_text(f"Error enviando factura: {e}")
-        print(f"ERROR ENVIANDO FACTURA: {e}")
+        await update.message.reply_text(f"Ocurrió un error: {e}")
+        print(f"ERROR: {e}")
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Acepta el pago antes de procesarlo"""
+    """Aprobación previa al pago"""
     query = update.pre_checkout_query
+    # Aquí podrías poner lógica extra, como verificar si el usuario no está baneado, etc.
     await query.answer(ok=True)
 
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Confirma el pago exitoso"""
-    await update.message.reply_text("¡Pago recibido! Gracias por tus Stars 🌟")
+    """Confirmación de pago exitoso"""
+    # Podemos saber cuánto pagaron
+    payment_info = update.message.successful_payment
+    total_amount = payment_info.total_amount # Cantidad de Stars
+    
+    await update.message.reply_text(
+        f"¡Wao! 🤩 He recibido tus {total_amount} Stars correctamente.\n"
+        "¡Gracias por tu generosidad!"
+    )
 
 def main():
     if not TOKEN:
-        print("ERROR: Falta el Token en las variables de entorno.")
+        print("ERROR: Falta el Token")
         return
 
-    # Construimos la aplicación
     application = Application.builder().token(TOKEN).build()
 
-    # Añadimos los manejadores
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stars", send_stars_invoice))
+    
+    # Manejadores de pago
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
-    # Iniciamos el bot
-    print("Bot iniciando...")
+    print("Bot iniciando en Railway...")
     application.run_polling()
 
 if __name__ == '__main__':
